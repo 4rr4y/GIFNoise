@@ -10,7 +10,9 @@ Hide content within a GIF using key "secretkey" (generates a GIF named `hidden.g
 python3 gifnoise.py hide secretkey matrix.gif cat.jpg 
 ```
 
-The key is used in generating derived keys which specifies the order of pixel selection in each frame. Selected pixels are used to hide the data via LSB encoding. It would require more effort to retrieve the original hidden content without the key (perhaps not impossible since analysis of pixel values across frames might reveal anomalies that indicate LSB encoding of a pixel in a specific frame...)
+The key is used in generating derived keys which specifies the order of pixel selection in each frame. Selected pixels are used to hide the data via LSB encoding.
+* It would require more effort to retrieve the original hidden content without the key (perhaps not impossible since analysis of pixel values across frames might reveal anomalies that indicate LSB encoding of a pixel in a specific frame...)
+* Note that LSB encoding here refers to modifying the LSB of the value of the code representing a color in the global/local color table. As a result, the visual differences may be apparent.
 
 Recover content from from GIF (showcat.jpg should be the same as cat.jpg):
 

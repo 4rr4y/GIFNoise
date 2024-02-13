@@ -50,6 +50,7 @@ class GIFSubBlock(GIFBlock):
 class GIFApplicationExtensionBlock(GIFBlock):
 
     def __init__(self, block_bytes):
+        # Typically, block_size = 11 (0xB)
         self.block_size = block_bytes[2]
         self.application_id = block_bytes[3:11]
         self.code = block_bytes[11:14]
@@ -141,6 +142,41 @@ class GIFImageBlock(GIFBlock):
         output += bytearray(b'\x00')
         return output
 
+class GIFPlaintextExtensionBlock(GIFBlock):
+
+    def __init__(self, block_bytes):
+        self.size = 2
+        self.block_size = block_bytes[self.size]
+        self.skipped_bytes = block_bytes[self.size : self.size + self.block_size]
+        self.size += self.block_size
+        self.sub_blocks = []
+        while block_bytes[self.size] != 0:
+            self.sub_blocks.append(GIFSubBlock(block_bytes[self.size + 1 : self.size + 1 + block_bytes[self.size]]))
+            self.size += 1 + block_bytes[self.size]
+        self.size += 1
+
+    def to_bytes(self):
+        output = bytearray(b'\x21\x01') + bytearray([self.block_size]) + bytearray(self.skipped_bytes)
+        for sub_block in self.sub_blocks:
+            output += sub_block.to_bytes()
+        return output + bytearray(b'\x00')
+
+class GIFCommentExtensionBlock(GIFBlock):
+
+    def __init__(self, block_bytes):
+        self.size = 2
+        self.sub_blocks = []
+        while block_bytes[self.size] != 0:
+            self.sub_blocks.append(GIFSubBlock(block_bytes[self.size + 1 : self.size + 1 + block_bytes[self.size]]))
+            self.size += 1 + block_bytes[self.size]
+        self.size += 1
+
+    def to_bytes(self):
+        output = bytearray(b'\x21\xFE')
+        for sub_block in self.sub_blocks:
+            output += sub_block.to_bytes()
+        return output + bytearray(b'\x00')
+
 class GIFTerminatorBlock(GIFBlock):
 
     def __init__(self):
@@ -160,34 +196,35 @@ class GIFImage:
         # Process blocks
         self.blocks, i = [], 0xD + self.header.gct_size
         while i < len(f):
-            block_type = f[i]
+            block_type, new_block = f[i], None
             # Extension introducer
             if block_type == 0x21:
                 extension_type = f[i + 1]
                 # Application Extension label
                 if extension_type == 0xFF:
-                    block_size = f[i + 2]
-                    if block_size == 11: # Application extension (typically)
-                        new_block = GIFApplicationExtensionBlock(f[i:])
-                        self.blocks.append(new_block)
-                        i += new_block.size
+                    new_block = GIFApplicationExtensionBlock(f[i:])
                 # Graphic Control Extension
                 elif extension_type == 0xF9:
                     new_block = GIFGraphicalExtensionBlock(f[i:])
-                    self.blocks.append(new_block)
-                    i += new_block.size
-            # Image
+                # Plaintext Extension
+                elif extension_type == 0x01:
+                    new_block = GIFPlaintextExtensionBlock(f[i:])
+                # Comment Extension
+                elif extension_type == 0xFE:
+                    new_block = GIFCommentExtensionBlock(f[i:]) 
+            # Image Data
             elif block_type == 0x2C:
                 new_block = GIFImageBlock(f[i:])
-                self.blocks.append(new_block)
-                i += new_block.size
-            # Terminator
+            # Terminator/Trailer
             elif block_type == 0x3B and i == len(f) - 1:
-                self.blocks.append(GIFTerminatorBlock())
-                i += 1
+                new_block = GIFTerminatorBlock()
             else:
                 print(f'Unknown block type: {hex(block_type)}... is GIF corrupt?')
                 exit()
+            # Add new block
+            if new_block is not None:
+                self.blocks.append(new_block)
+                i += new_block.size
 
     def to_bytes(self):
         output = bytearray(self.header.to_bytes())
