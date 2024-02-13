@@ -1,4 +1,4 @@
-import sys, struct, random
+import sys, struct, random, time
 
 ######################################################################
 ######################### GIF BASIC STRUCTURE# #######################
@@ -249,6 +249,7 @@ def process_clear_code(clear_code, end_of_information_code, min_code_size):
         return next_code, current_code_size, dictionary, previous_code 
 
 def lzw_decompress(compressed_data, min_code_size):
+    start = time.time()
     # Note: Color table has code from 0 to 2^min_code_size - 1
     # --> Each color represented as a code
     # --> additional codes are clear code and end-of-information (EOI) code
@@ -301,6 +302,7 @@ def lzw_decompress(compressed_data, min_code_size):
                     current_code_size += 1
             # Track current code as previously seen code
             previous_code = code
+    print('lzw_decompress', time.time() - start)
     return output
 
 def write_code_buffered(code, buffer, buffer_length, current_code_size, output):
@@ -315,6 +317,7 @@ def write_code_buffered(code, buffer, buffer_length, current_code_size, output):
     return buffer, buffer_length
 
 def lzw_compress(data, min_code_size):
+    start = time.time()
     clear_code = 1 << min_code_size
     end_of_information_code = clear_code + 1
     next_code = end_of_information_code + 1
@@ -352,31 +355,37 @@ def lzw_compress(data, min_code_size):
     # Empty any remaining bits in the buffer
     if buffer_length > 0:
         output.append(buffer & 0xFF)
+    print('lzw_compress', time.time() - start)
     return output
 
 ######################################################################
 ############################ STEGANOGRAPHY ###########################
 ######################################################################
 
-def generate_random_index_list(number_of_indices, seed):
-    index_list = list(range(number_of_indices))
-    random.Random(seed).shuffle(index_list)
+def generate_random_index_list(max_index, number_of_indices_required, seed):
+    start = time.time()
+    index_list = random.Random(seed).sample(range(max_index), number_of_indices_required)
+    print('generate_random_index_list', time.time() - start)
     return index_list
 
 def lsb_encode(data, hidden_data_bits, random_index_list):
+    start = time.time()
     for i in range(len(hidden_data_bits)):
         index = random_index_list[i]
         data[index] = (data[index] & 0xFE) | int(hidden_data_bits[i])
+    print('lsb_encode', time.time() - start)
 
 def lsb_decode(encoded_data, stop_pattern, random_index_list):
-    hidden_data, hidden_data_bits = bytearray(), []
+    start = time.time()
+    hidden_data, byte, pattern_index = bytearray(), 0, 0
     for i in range(len(encoded_data)):
-        hidden_data_bits.append(str(encoded_data[random_index_list[i]] & 1))
-        if len(hidden_data_bits) == 8:
-            hidden_data += bytearray([int(''.join(hidden_data_bits), 2)])
+        byte = (byte << 1) | (encoded_data[random_index_list[i]] & 1)
+        if (i + 1) % 8 == 0:
+            hidden_data.append(byte)
             if hidden_data[-len(stop_pattern):] == stop_pattern:
                 break
-            hidden_data_bits = []
+            byte = 0
+    print('lsb_decode', time.time() - start)
     return hidden_data[:-len(stop_pattern)]
 
 ######################################################################
@@ -410,23 +419,22 @@ def hide_data_in_image(img, key, data):
         print(f'Using up to {data_chunk_size * 8} of {avail_block_chunk_size} bits per block... ({(data_chunk_size * 8)/avail_block_chunk_size*100}%)')
     data_position = 0
     for i, block in enumerate(image_blocks):
-        compressed_frame_data = b''.join(map(lambda x: x.value, block.sub_blocks))
-        # Hide as much data as possible (don't need to un/re-compress if all data already hidden)
-        recompressed_frame_data = compressed_frame_data
-        decompressed_frame_data = lzw_decompress(compressed_frame_data, block.lzw_min_code_size)
         if data_position + data_chunk_size > len(data):
             data_chunk_size = len(data) - data_position
         data_chunk_bits = ''.join(map(lambda x: format(x, '08b'), data[data_position : data_position + data_chunk_size] + bytearray(DATA_END_MARKER)))
         print(f'Hiding bytes {data_position}-{data_position + data_chunk_size} in image block {i} with key "{key + str(i)}" ...')
+        compressed_frame_data = b''.join(map(lambda x: x.value, block.sub_blocks))
+        # Hide as much data as possible (don't need to un/re-compress if all data already hidden)
+        recompressed_frame_data = compressed_frame_data
+        decompressed_frame_data = lzw_decompress(compressed_frame_data, block.lzw_min_code_size)
         data_position += data_chunk_size
-        lsb_encode(decompressed_frame_data, data_chunk_bits, generate_random_index_list(block_chunk_size, key + str(i)))
+        lsb_encode(decompressed_frame_data, data_chunk_bits, generate_random_index_list(block_chunk_size, block_chunk_size, key + str(i)))
         recompressed_frame_data = lzw_compress(decompressed_frame_data, block.lzw_min_code_size)
         block.sub_blocks = list(map(lambda x: GIFSubBlock(x), generate_chunks(recompressed_frame_data, 255)))
     # Output GIF file with hidden content as a file
     f = open('hidden.gif', 'wb')
     f.write(img.to_bytes())
     f.close()
-    
 
 def show_data_in_image(img, key, target_filepath):
     data = bytearray()
@@ -437,11 +445,11 @@ def show_data_in_image(img, key, target_filepath):
     block_chunk_size = len(lzw_decompress([x for xs in xss for x in xs], image_blocks[0].lzw_min_code_size))
     # Enumerate all image blocks
     for i, block in enumerate(image_blocks):
+        print(f'Recovering bytes in image block {i} with key "{key + str(i)}" ...')
         # decompress data
         compressed_frame_data = b''.join(map(lambda x: x.value, block.sub_blocks))
         decompressed_frame_data = lzw_decompress(compressed_frame_data, block.lzw_min_code_size)
-        data += lsb_decode(decompressed_frame_data, DATA_END_MARKER, generate_random_index_list(block_chunk_size, key + str(i)))
-        print(f'Recovering bytes in image block {i} with key "{key + str(i)}" ...')
+        data += lsb_decode(decompressed_frame_data, DATA_END_MARKER, generate_random_index_list(block_chunk_size, block_chunk_size, key + str(i)))
     # Output hidden content to a file
     f = open(target_filepath, 'wb')
     f.write(data)

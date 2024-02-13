@@ -20,8 +20,9 @@ Recover content from from GIF (showcat.jpg should be the same as cat.jpg):
 python3 gifnoise.py show secretkey hidden.gif showcat.jpg
 ```
 
-It is recommended to:
-* not overload any GIF and store too much data as LSB as the resulting image would have pretty high "noise".
+## Recommendations
+
+* Do not overload any GIF and store too much data as LSB as the resulting image would have pretty high "noise". If required, can consider compressing the content and hiding the compressed content in the GIF.
 * Pick GIFs with multiple moving components to make the presence of "noise" less obvious.
 
 ## Examples
@@ -61,5 +62,4 @@ Here are a few other examples with `cat.jpg` inside for your reference also with
 `world_cup.gif` (2.1MB, [Source](https://www.pinterest.com/pin/pin-for-later-the-13-craziest-world-cup-moments-in-gifs-the-goal-that-won-the-world-cup-by-none-other-than-the-germ--164944405082541071/)):
 
 ![](hidden_world_cup.gif)
-
 
