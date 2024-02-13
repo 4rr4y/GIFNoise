@@ -7,7 +7,7 @@ A small personal effort to understand the GIF format in greater detail. Attempt 
 Hide content within a GIF using key "secretkey" (generates a GIF named `hidden.gif`):
 
 ```sh
-python3 gif_steganography.py hide secretkey matrix.gif cat.jpg 
+python3 gifnoise.py hide secretkey matrix.gif cat.jpg 
 ```
 
 The key is used in generating derived keys which specifies the order of pixel selection in each frame. Selected pixels are used to hide the data via LSB encoding. It would require more effort to retrieve the original hidden content without the key (perhaps not impossible since analysis of pixel values across frames might reveal anomalies that indicate LSB encoding of a pixel in a specific frame...)
@@ -15,7 +15,7 @@ The key is used in generating derived keys which specifies the order of pixel se
 Recover content from from GIF (showcat.jpg should be the same as cat.jpg):
 
 ```sh
-python3 gif_steganography.py show secretkey hidden.gif showcat.jpg
+python3 gifnoise.py show secretkey hidden.gif showcat.jpg
 ```
 
 It is recommended to:
